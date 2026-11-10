@@ -7,25 +7,18 @@
 extern "C" {
 #endif
 
-/* Calibrate these endpoints before choosing the claw's working angles. */
-#ifndef GRIPPER_SERVO_MIN_PULSE_US
+/* 夹爪开合角度待定，先保留 0～180° 设置接口；脉宽端点需实机校准。 */
 #define GRIPPER_SERVO_MIN_PULSE_US 500U
-#endif
-#ifndef GRIPPER_SERVO_MAX_PULSE_US
 #define GRIPPER_SERVO_MAX_PULSE_US 2500U
-#endif
 #define GRIPPER_SERVO_MAX_ANGLE_DEG 180U
 
-/* Call after MX_TIM3_Init(): 72 MHz timer clock, PSC=71, ARR=19999.
- * Does not start PWM or move the claw. Repeated Init() is harmless.
- * The driver owns CH2; do not stop/reinitialize TIM3 externally during use.
+/* PA7 / TIM3_CH2：在 MX_TIM3_Init() 后调用，初始化不启动舵机。
+ * TIM3 使用 72 MHz 时钟、PSC=71、ARR=19999，运行期间不要重置定时器。
  */
 HAL_StatusTypeDef GripperServo_Init(void);
 
-/* PA7 / TIM3_CH2: 0..180 degrees, increasing pulse width.
- * Rejects out-of-range angles or calls before Init() with HAL_ERROR.
- * Returns immediately and keeps PWM running to hold the target position.
- * HAL_OK means command accepted, not motion complete.
+/* 设置绝对角度，范围 0～180°，越界或未初始化时返回 HAL_ERROR。
+ * 下发后立即返回，PWM 持续保持位置；HAL_OK 不代表机械动作已完成。
  */
 HAL_StatusTypeDef GripperServo_SetAngle(uint16_t angle);
 
