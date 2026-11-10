@@ -57,6 +57,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define gimbal_servo_pwm_Pin GPIO_PIN_6
+#define gimbal_servo_pwm_GPIO_Port GPIOA
+#define gripper_motor_pwm_Pin GPIO_PIN_7
+#define gripper_motor_pwm_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 
