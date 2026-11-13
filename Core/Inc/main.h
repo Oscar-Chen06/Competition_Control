@@ -61,12 +61,24 @@ void Error_Handler(void);
 #define gimbal_servo_pwm_GPIO_Port GPIOA
 #define gripper_motor_pwm_Pin GPIO_PIN_7
 #define gripper_motor_pwm_GPIO_Port GPIOA
+#define motor_dir1_Pin GPIO_PIN_0
+#define motor_dir1_GPIO_Port GPIOB
+#define motor_dir2_Pin GPIO_PIN_1
+#define motor_dir2_GPIO_Port GPIOB
 #define DIR_Pin GPIO_PIN_12
 #define DIR_GPIO_Port GPIOB
 #define ENA_Pin GPIO_PIN_15
 #define ENA_GPIO_Port GPIOB
+#define EncoderA_Pin GPIO_PIN_8
+#define EncoderA_GPIO_Port GPIOA
+#define EncoderB_Pin GPIO_PIN_9
+#define EncoderB_GPIO_Port GPIOA
 #define PUL_Pin GPIO_PIN_10
 #define PUL_GPIO_Port GPIOA
+#define motor_enable_Pin GPIO_PIN_5
+#define motor_enable_GPIO_Port GPIOB
+#define motor_pwm_Pin GPIO_PIN_6
+#define motor_pwm_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
