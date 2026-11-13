@@ -15,6 +15,7 @@
 ├── Major_assignment.ioc# STM32CubeMX 工程文件
 ├── Makefile            # 编译脚本
 └── startup_stm32f103xb.s # 启动文件
+```
 
 ##注意事项
 1. 不熟悉操作的同学，先在 `testbench` 分支练习和测试；熟悉流程、确认修改无误后，再将内容合并到 `main` 分支。
