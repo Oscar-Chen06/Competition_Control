@@ -57,28 +57,26 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define enable_pin_Pin GPIO_PIN_0
+#define enable_pin_GPIO_Port GPIOA
+#define dir1_Pin GPIO_PIN_4
+#define dir1_GPIO_Port GPIOA
+#define dir2_Pin GPIO_PIN_5
+#define dir2_GPIO_Port GPIOA
 #define gimbal_servo_pwm_Pin GPIO_PIN_6
 #define gimbal_servo_pwm_GPIO_Port GPIOA
 #define gripper_motor_pwm_Pin GPIO_PIN_7
 #define gripper_motor_pwm_GPIO_Port GPIOA
-#define motor_dir1_Pin GPIO_PIN_0
-#define motor_dir1_GPIO_Port GPIOB
-#define motor_dir2_Pin GPIO_PIN_1
-#define motor_dir2_GPIO_Port GPIOB
 #define DIR_Pin GPIO_PIN_12
 #define DIR_GPIO_Port GPIOB
 #define ENA_Pin GPIO_PIN_15
 #define ENA_GPIO_Port GPIOB
-#define EncoderA_Pin GPIO_PIN_8
-#define EncoderA_GPIO_Port GPIOA
-#define EncoderB_Pin GPIO_PIN_9
-#define EncoderB_GPIO_Port GPIOA
 #define PUL_Pin GPIO_PIN_10
 #define PUL_GPIO_Port GPIOA
-#define motor_enable_Pin GPIO_PIN_5
-#define motor_enable_GPIO_Port GPIOB
-#define motor_pwm_Pin GPIO_PIN_6
-#define motor_pwm_GPIO_Port GPIOB
+#define encoderA_Pin GPIO_PIN_15
+#define encoderA_GPIO_Port GPIOA
+#define encoderB_Pin GPIO_PIN_3
+#define encoderB_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

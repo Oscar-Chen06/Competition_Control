@@ -8,10 +8,10 @@ extern "C" {
 #include "main.h"
 
 /* ------------------------------- 硬件定时器 ------------------------------- */
-#define MG513_PWM_TIM_PSC 0U       /* TIM4 时钟 72 MHz */
+#define MG513_PWM_TIM_PSC 0U       /* TIM1 时钟 72 MHz */
 #define MG513_PWM_ARR 7199U        /* 72 MHz/(7199+1) = 10 kHz */
 #define MG513_PWM_FREQ_HZ 10000U
-#define MG513_CTRL_TIM_PSC 71U     /* TIM2：72 MHz/(71+1) = 1 MHz */
+#define MG513_CTRL_TIM_PSC 71U     /* TIM4：72 MHz/(71+1) = 1 MHz */
 #define MG513_CTRL_TIM_ARR 9999U   /* 1 MHz/10000 = 100 Hz = 10 ms */
 
 /* ---------------------------------- PWM ---------------------------------- */
@@ -19,7 +19,7 @@ extern "C" {
 #define MG513_PWM_DEADBAND 50      /* 小于此值直接当 0 */
 
 /* ------------------------------ 编码器 / 机械 ----------------------------- */
-/* ENC_PPR 为电机轴一圈计数（已含 TIM1 四倍频）；CNT_PER_OUTPUT_REV 必须实测标定。 */
+/* ENC_PPR 为电机轴一圈计数（已含 TIM2 四倍频）；CNT_PER_OUTPUT_REV 必须实测标定。 */
 #define MG513_ENC_PPR 52.0f
 #define MG513_GEAR_RATIO 30.0f
 #define MG513_CNT_PER_OUTPUT_REV (MG513_ENC_PPR * MG513_GEAR_RATIO)
@@ -31,7 +31,7 @@ extern "C" {
 /* ------------------------------ 极性 / 方向 ------------------------------- */
 #define MG513_ENCODER_INVERT 1 /* 编码器计数方向与电机正转相反时置 1 */
 #define MG513_DIR_INVERT 0     /* 方向接反时置 1 */
-#define MG513_EN_ACTIVE_LOW 0  /* 0=高电平使能（PB5）；低电平使能时改为 1 */
+#define MG513_EN_ACTIVE_LOW 0  /* 0=高电平使能（PA0）；低电平使能时改为 1 */
 
 /* ------------------------------ 动作完成判定 ------------------------------ */
 #define MG513_DONE_BAND_DEG 2.0f
@@ -66,8 +66,8 @@ typedef struct {
     int8_t last_dir;   /* 上次方向：-1 未知，0 反转，1 正转 */
 } mg513_t;
 
-/* 初始化并启动编码器、PWM、TIM2 10 ms 节拍；驱动保持失能，首次位置指令时才使能。
- * 硬件：TIM4_CH1/PB6 PWM，PB5 高电平使能，PB0/PB1 方向，TIM1 PA8/PA9 编码器。
+/* 初始化并启动编码器、PWM、TIM4 10 ms 节拍；驱动保持失能，首次位置指令时才使能。
+ * 硬件：TIM1_CH1/PA8 PWM，PA0 高电平使能，PA4/PA5 方向，TIM2 PA15/PB3 编码器。
  */
 HAL_StatusTypeDef MG513_Init(void);
 
