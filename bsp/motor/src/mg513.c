@@ -48,16 +48,16 @@ static void motor_init(mg513_t *m)
         return;
     }
 
-    m->dir1_port = motor_dir1_GPIO_Port;
-    m->dir1_pin = motor_dir1_Pin;
-    m->dir2_port = motor_dir2_GPIO_Port;
-    m->dir2_pin = motor_dir2_Pin;
-    m->en_port = motor_enable_GPIO_Port;
-    m->en_pin = motor_enable_Pin;
+    m->dir1_port = dir1_GPIO_Port;
+    m->dir1_pin = dir1_Pin;
+    m->dir2_port = dir2_GPIO_Port;
+    m->dir2_pin = dir2_Pin;
+    m->en_port = enable_pin_GPIO_Port;
+    m->en_pin = enable_pin_Pin;
 
-    m->htim_pwm = &htim4;
+    m->htim_pwm = &htim1;
     m->pwm_channel = TIM_CHANNEL_1;
-    m->htim_enc = &htim1;
+    m->htim_enc = &htim2;
 
     m->cnt_per_output_rev = MG513_CNT_PER_OUTPUT_REV;
     m->speed_tau = MG513_SPEED_TAU_S;
@@ -214,7 +214,7 @@ static void mg513_tick(void)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    if (htim->Instance == TIM2)
+    if (htim->Instance == TIM4)
     {
         mg513_tick();
     }
@@ -231,8 +231,8 @@ HAL_StatusTypeDef MG513_Init(void)
     {
         return HAL_ERROR;
     }
-    if ((htim2.Init.Prescaler != MG513_CTRL_TIM_PSC) ||
-        (htim4.Init.Prescaler != MG513_PWM_TIM_PSC))
+    if ((htim4.Init.Prescaler != MG513_CTRL_TIM_PSC) ||
+        (htim1.Init.Prescaler != MG513_PWM_TIM_PSC))
     {
         return HAL_ERROR;
     }
@@ -240,27 +240,27 @@ HAL_StatusTypeDef MG513_Init(void)
     motor_init(&s_motor);
     control_init(&s_ctrl);
     motor_enable(&s_motor, 0U);
-    __HAL_TIM_SET_AUTORELOAD(&htim2, MG513_CTRL_TIM_ARR);
-    __HAL_TIM_SET_AUTORELOAD(&htim4, MG513_PWM_ARR);
+    __HAL_TIM_SET_AUTORELOAD(&htim4, MG513_CTRL_TIM_ARR);
+    __HAL_TIM_SET_AUTORELOAD(&htim1, MG513_PWM_ARR);
 
-    if (HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL) != HAL_OK)
+    if (HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL) != HAL_OK)
     {
         return HAL_ERROR;
     }
-    if (HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1) != HAL_OK)
+    if (HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1) != HAL_OK)
     {
-        (void)HAL_TIM_Encoder_Stop(&htim1, TIM_CHANNEL_ALL);
+        (void)HAL_TIM_Encoder_Stop(&htim2, TIM_CHANNEL_ALL);
         return HAL_ERROR;
     }
 
     state = READY;
 
-    if (HAL_TIM_Base_Start_IT(&htim2) != HAL_OK)
+    if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK)
     {
         state = UNINITIALIZED;
         motor_enable(&s_motor, 0U);
-        (void)HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
-        (void)HAL_TIM_Encoder_Stop(&htim1, TIM_CHANNEL_ALL);
+        (void)HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+        (void)HAL_TIM_Encoder_Stop(&htim2, TIM_CHANNEL_ALL);
         return HAL_ERROR;
     }
 
