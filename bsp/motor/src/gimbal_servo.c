@@ -1,8 +1,8 @@
 #include "gimbal_servo.h"
 #include "tim.h"
 
-/* 一个状态即可表示是否初始化、是否启动 PWM，以及上次目标位置。 */
 static enum { UNINITIALIZED, READY, HOME, END } state;
+static uint8_t pwm_started;
 
 static HAL_StatusTypeDef GimbalServo_WritePulse(uint32_t pulse_us)
 {
@@ -11,7 +11,7 @@ static HAL_StatusTypeDef GimbalServo_WritePulse(uint32_t pulse_us)
 
     /* CCR1 的数值就是高电平微秒数；只在第一次动作时启动 PWM。 */
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pulse_us);
-    if (state == READY)
+    if (!pwm_started)
     {
         status = HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
         if (status != HAL_OK)
@@ -20,6 +20,7 @@ static HAL_StatusTypeDef GimbalServo_WritePulse(uint32_t pulse_us)
             __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, previous_pulse);
             return status;
         }
+        pwm_started = 1U;
     }
     return HAL_OK;
 }
@@ -37,6 +38,16 @@ HAL_StatusTypeDef GimbalServo_Init(void)
     {
         state = READY;
     }
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef GimbalServo_ConfirmHome(void)
+{
+    if ((state == UNINITIALIZED) || pwm_started)
+    {
+        return HAL_ERROR;
+    }
+    state = HOME;
     return HAL_OK;
 }
 
@@ -63,7 +74,6 @@ HAL_StatusTypeDef GimbalServo_RotateCW180(void)
 {
     HAL_StatusTypeDef status;
 
-    /* 必须先下发起点，不能在终点重复执行完整 180° 行程。 */
     if (state != HOME)
     {
         return HAL_ERROR;

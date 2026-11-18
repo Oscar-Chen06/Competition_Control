@@ -53,7 +53,8 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOB, motor_dir1_Pin|motor_dir2_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, DIR_Pin|ENA_Pin|motor_enable_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, DIR_Pin|motor_enable_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(ENA_GPIO_Port, ENA_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(PUL_GPIO_Port, PUL_Pin, GPIO_PIN_RESET);

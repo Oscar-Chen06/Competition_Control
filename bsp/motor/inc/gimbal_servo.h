@@ -23,11 +23,12 @@ extern "C" {
  * 两台舵机共用 TIM3，运行期间不要在外部停止或重置定时器。
  */
 HAL_StatusTypeDef GimbalServo_Init(void);
+HAL_StatusTypeDef GimbalServo_ConfirmHome(void);
 
 /* 下发起点位置后立即返回；调用方需等待舵机转到起点。 */
 HAL_StatusTypeDef GimbalServo_Home(void);
 
-/* 在 Home() 并等待后调用，顺时针转到另一端；重复调用返回 HAL_ERROR。
+/* 在 Home() 并等待或人工定位且 ConfirmHome() 后调用；重复调用返回 HAL_ERROR。
  * 函数不等待动作结束，PWM 持续保持目标位置，无位置反馈。
  */
 HAL_StatusTypeDef GimbalServo_RotateCW180(void);

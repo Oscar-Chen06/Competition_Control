@@ -23,8 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "gripper_servo.h"
-#include "mg513.h"
+#include "motor_control.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -93,17 +92,9 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-  if (GripperServo_Init() != HAL_OK)
+  if (MotorControl_Init() == HAL_OK)
   {
-    Error_Handler();
-  }
-  if (GripperServo_SetAngle(GRIPPER_SERVO_DEFAULT_ANGLE_DEG) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (MG513_Init() != HAL_OK)
-  {
-    Error_Handler();
+    (void)MotorControl_RunOnce();
   }
   /* USER CODE END 2 */
 
@@ -169,6 +160,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  MotorControl_Stop();
   __disable_irq();
   while (1)
   {

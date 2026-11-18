@@ -2,6 +2,52 @@
 
 本文整理云台舵机、夹爪舵机、升降步进电机和 MG513 直流减速电机的函数接口、可调参数及调用示例。
 
+## 自动搬运流程与标定
+
+`Core/Src/motor_control.c` 使用阻塞式顺序流程，`Core/Inc/motor_control.h` 集中配置参数。`main.c` 完成外设初始化后调用 `MotorControl_Init()`，成功后调用一次 `MotorControl_RunOnce()`，整个流程完成或出错才返回，随后进入空闲主循环。旧的 `MotorControl_Start()` / `MotorControl_Process()` 已移除。
+
+启动前人工将底盘对齐取物台、升降机构置于最高处、云台摆在取物方向。初始化及3秒启动等待期间不下发云台位置、不启动云台PWM。自动流程为：张开夹爪 → 下降取货 → 夹紧 → 抬升 → 前进270 mm → 停车静置200 ms → 旋转180° → 下降放货 → 松爪 → 升到最高处 → 返回起点 → 静置200 ms后完成。只使用置物台2，不循环执行；结束后云台保持朝向台2。
+
+默认 `MOTOR_CONTROL_CALIBRATED=0`，程序保持 `MOTOR_CONTROL_FAULT`，错误为 `MOTOR_CONTROL_ERROR_NOT_CALIBRATED`，不会自动运动。必须完成以下标定后才可置为1并重新编译：
+
+| 配置宏（均在 motor_control.h） | 含义与填写规则 |
+| --- | --- |
+| `MOTOR_CONTROL_TRAVEL_SIGN` | 向置物区对应 MG513 正角度填 `1`，负角度填 `-1`；默认0无效 |
+| `MOTOR_CONTROL_LIFT_DOWN_FORWARD` | 步进正转下降填 `1`，反转下降填 `0`；默认-1无效 |
+| `MOTOR_CONTROL_PICKUP_DEPTH_MM` | 从最高处下降到实际夹持位置的距离 D；默认-1，待测量 |
+| `MOTOR_CONTROL_LIFT_TRAVEL_MM` | 实测可用升降行程；默认-1，不能直接填丝杆总长100 mm |
+| `MOTOR_CONTROL_GRIP_OPEN_DEG` | 实测张开角度0～180°；默认-1无效 |
+| `MOTOR_CONTROL_GRIP_CLOSED_DEG` | 实测夹紧角度0～180°，不能与张开角度相同；默认-1无效 |
+| `MOTOR_CONTROL_CARRY_LIFT_MM` | 取货后抬升量 H，默认10 mm，允许5～10 mm |
+
+仍需标定 `gimbal_servo.h` 的云台端点和方向、`mg513.h` 的编码器计数及方向，并实机整定PID。夹爪“180°运动47 mm”不足以推算张开及夹紧角度。未填写参数或范围无效时，配置错误会锁存，不执行后续动作。
+
+最高处为升降零点，向下为正：取货位置 D，运输位置 D−H，放货位置 D+40，结束位置0。启动检查 `D≥H` 和 `D+40≤可用行程`。从运输高度下降至放货高度的距离为 H+40，默认50 mm。丝杆导程8 mm/圈，对应1 mm为45°、100脉冲；步进驱动按脉冲取整，位置只是开环估计。
+
+底盘编码器初始化位置为零点，此后启动前不要手动移动底盘。48 mm车轮直驱，270 mm约为输出轴644.58°；向置物区和返回起点分别下发绝对目标±644.58°和0°。夹爪等待初值1秒、云台等待初值1.5秒、每段行走超时15秒；参数均需结合负载验证。
+
+| 控制接口 | 行为 |
+| --- | --- |
+| `MotorControl_Init()` | 初始化不运动；不能用来解除故障或重新归零 |
+| `MotorControl_RunOnce()` | 仅在 `READY` 可调用；阻塞执行完整流程，成功返回 `HAL_OK`，失败返回 `HAL_ERROR`；不能重复执行 |
+| `MotorControl_Stop()` | 主程序停机入口，停止底盘并锁定流程，不松爪、不撤销升降保持力矩、不关舵机PWM；保留已有故障和完成状态 |
+| `MotorControl_GetState()` | 返回未初始化、待命、运行、完成、停止或故障六种状态，不再区分每个动作 |
+| `MotorControl_GetError()` | 返回无错误，或未标定、参数错误、驱动失败、行走超时四类错误 |
+
+错误码只保存在内存，供调试器或调用者查询，没有串口发送或显示输出。驱动失败统一为 `MOTOR_CONTROL_ERROR_DRIVER`；去程和回程超时统一为 `MOTOR_CONTROL_ERROR_TIMEOUT`，保留未标定和配置错误两类保护。
+
+所有控制接口只在主程序上下文调用，运行期间保持系统节拍和TIM2中断开启。夹爪、云台和启动等待使用 `HAL_Delay()`；升降沿用阻塞驱动；底盘等待循环每毫秒检查到位和15秒超时。主程序阻塞时，TIM2中断仍继续执行PID。
+
+阻塞期间主循环不能检测按钮、接收命令或调用停止接口，因此 `MotorControl_Stop()` 不是异步急停，也不支持从中断调用它来中止流程。升降没有限位反馈，舵机通过等待时间推定到位，软件无法确认失步、夹持成功或旋转完成。行走超时或驱动调用失败时停止底盘并立即返回故障，不再下发任何后续动作；保持已有夹持和升降力矩。
+
+每次重跑必须复位并人工恢复起点、最高处和取物方向。先单轴标定，再空载检查流程和干涉，最后带载验收；软件模拟验证不替代实机验证。
+
+### 云台人工初始位置接口
+
+新增 `HAL_StatusTypeDef GimbalServo_ConfirmHome(void)`：在 `GimbalServo_Init()` 后、PWM从未启动时调用，仅记录人工已摆到起点，不写比较寄存器、不启动PWM。它没有传感器，不是自动归零。`GimbalServo_RotateCW180()` 随后首次启动PWM并转到终点。PWM启动失败时保留原状态及比较值；成功启动后不能再用 `ConfirmHome()` 重写位置。原有 `Home()` 接口仍可驱动云台回到起点。
+
+GPIO初始化及CubeMX配置均将TB6600的低有效ENA设置为高电平禁用；升降动作完成后仍保持使能。Makefile已加入控制源文件，EIDE按现有Core目录扫描编译。
+
 ## 1. 接线与初始化条件
 
 | 电机 | 型号或规格 | 控制信号 | STM32 引脚 |
@@ -34,6 +80,7 @@ MG513 使用 TIM4_CH1 输出 10 kHz PWM（`PSC=0`、`ARR=7199`）；TIM2 产生 
 
 /* 云台舵机 */
 HAL_StatusTypeDef GimbalServo_Init(void);
+HAL_StatusTypeDef GimbalServo_ConfirmHome(void);
 HAL_StatusTypeDef GimbalServo_Home(void);
 HAL_StatusTypeDef GimbalServo_RotateCW180(void);
 
@@ -63,7 +110,8 @@ mg513_position_t MG513_GetPosition(void);
 | --- | --- |
 | `GimbalServo_Init()` | 在 `MX_TIM3_Init()` 后初始化驱动，不启动 PWM、不下发位置 |
 | `GimbalServo_Home()` | 下发云台起点位置，立即返回；调用方需等待舵机到位 |
-| `GimbalServo_RotateCW180()` | 在回起点并等待后，向顺时针终点转动；已在终点时重复调用返回错误，需先再次回起点 |
+| `GimbalServo_ConfirmHome()` | 人工已摆在起点时仅记录状态，不输出PWM；只允许在PWM从未启动时调用 |
+| `GimbalServo_RotateCW180()` | 在回起点并等待后，或人工定位并调用ConfirmHome后，向顺时针终点转动；已在终点时重复调用返回错误，需先再次回起点 |
 | `GripperServo_Init()` | 在 `MX_TIM3_Init()` 后初始化驱动，不启动 PWM、不下发位置 |
 | `GripperServo_SetAngle(angle)` | 设置夹爪绝对目标角度，整数0～180°；下发后立即返回 |
 | `LiftStepper_Init()` | 在系统时钟和 GPIO 初始化后调用；脉冲拉低、驱动器禁用，不产生运动 |
