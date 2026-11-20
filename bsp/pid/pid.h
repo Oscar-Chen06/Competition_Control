@@ -18,7 +18,7 @@ extern "C" {
 /* ---------------------------------- 转速 ---------------------------------- */
 #define PID_RPM_TO_DEG_S 6.0f         /* rpm * 6 = deg/s */
 #define PID_DEG_S_TO_RPM (1.0f / 6.0f)
-#define PID_SPEED_MAX_DEG_S 720.0f    /* 内环给定钳位 [deg/s] = 120 rpm */
+#define PID_SPEED_MAX_DEG_S 120.0f    /* 内环给定钳位 [deg/s] = 20 rpm */
 #define PID_SPEED_RAMP_DEG_S2 1440.0f /* 速度模式给定斜坡加速度 [deg/s^2] */
 
 /* --------------------------- 外环（位置环）PID ---------------------------- */
