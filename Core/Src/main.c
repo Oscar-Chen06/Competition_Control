@@ -33,7 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define BUTTON_DEBOUNCE_MS 10U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,7 +44,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+static volatile uint8_t button_event;
+static volatile uint32_t last_button_tick;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -92,9 +93,13 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-  if (MotorControl_Init() == HAL_OK)
+  last_button_tick = HAL_GetTick() - BUTTON_DEBOUNCE_MS;
+
+  if (MotorControl_Init() != HAL_OK)
   {
-    (void)MotorControl_RunOnce();
+    while (1)
+    {
+    }
   }
   /* USER CODE END 2 */
 
@@ -105,6 +110,26 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    if (button_event != 0U)
+    {
+      button_event = 0U;
+      MotorControlState state = MotorControl_GetState();
+      if (state == MOTOR_CONTROL_READY)
+      {
+        (void)MotorControl_RunOnce();
+      }
+      else if (state == MOTOR_CONTROL_RUNNING)
+      {
+        MotorControl_RequestStop();
+      }
+      else if (state == MOTOR_CONTROL_DONE)
+      {
+        if (MotorControl_Rearm() == HAL_OK)
+        {
+          (void)MotorControl_RunOnce();
+        }
+      }
+    }
   }
   /* USER CODE END 3 */
 }
@@ -149,7 +174,27 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if ((GPIO_Pin != SW1_Pin) && (GPIO_Pin != SW2_Pin) &&
+      (GPIO_Pin != SW3_Pin) && (GPIO_Pin != SW4_Pin))
+  {
+    return;
+  }
 
+  uint32_t now = HAL_GetTick();
+  if ((uint32_t)(now - last_button_tick) < BUTTON_DEBOUNCE_MS)
+  {
+    return;
+  }
+  last_button_tick = now;
+  button_event = 1U;
+
+  if (MotorControl_GetState() == MOTOR_CONTROL_RUNNING)
+  {
+    MotorControl_RequestStop();
+  }
+}
 /* USER CODE END 4 */
 
 /**

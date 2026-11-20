@@ -71,6 +71,7 @@ void Tim1Mux_ReleaseStepper(void)
 
 /* 三种状态：未初始化、空闲、正在转动。 */
 static volatile enum { UNINITIALIZED, READY, MOVING } state;
+static volatile uint8_t s_abort_requested;
 static volatile int32_t s_remaining;
 static volatile uint32_t s_freq;
 static uint32_t s_f_start;
@@ -153,6 +154,7 @@ HAL_StatusTypeDef LiftStepper_Init(void)
     stepper_stop_pulses();
     stepper_set_dir(LIFT_STEPPER_FORWARD);
     stepper_enable(0U);
+    s_abort_requested = 0U;
 
     s_remaining = 0;
     s_freq = LIFT_STEPPER_MIN_FREQ_HZ;
@@ -199,6 +201,10 @@ HAL_StatusTypeDef LiftStepper_Move(LiftStepperDirection direction, float angle_d
     {
         return HAL_BUSY;
     }
+    if (s_abort_requested != 0U)
+    {
+        return HAL_ERROR;
+    }
 
     rounded_steps = (double)angle_deg * (double)LIFT_STEPPER_STEPS_PER_REV / 360.0 + 0.5;
     if (rounded_steps >= (double)INT32_MAX + 1.0)
@@ -219,6 +225,10 @@ HAL_StatusTypeDef LiftStepper_Move(LiftStepperDirection direction, float angle_d
     stepper_set_dir(direction);
     stepper_enable(1U);
     HAL_Delay(LIFT_STEPPER_ENABLE_DELAY_MS);
+    if (s_abort_requested != 0U)
+    {
+        return HAL_ERROR;
+    }
 
     s_remaining = (int32_t)step_count;
     s_f_start = f_start;
@@ -247,10 +257,26 @@ HAL_StatusTypeDef LiftStepper_Move(LiftStepperDirection direction, float angle_d
 
     while (state == MOVING)
     {
+        if (s_abort_requested != 0U)
+        {
+            stepper_stop_pulses();
+            state = READY;
+            break;
+        }
         HAL_Delay(1);
     }
 
-    return HAL_OK;
+    return (s_abort_requested != 0U) ? HAL_ERROR : HAL_OK;
+}
+
+void LiftStepper_Abort(void)
+{
+    s_abort_requested = 1U;
+}
+
+void LiftStepper_ClearAbort(void)
+{
+    s_abort_requested = 0U;
 }
 
 void LiftStepper_Stop(void)
@@ -281,6 +307,12 @@ void LiftStepper_OnPulse(void)
 
     if (state != MOVING)
     {
+        return;
+    }
+    if (s_abort_requested != 0U)
+    {
+        stepper_stop_pulses();
+        state = READY;
         return;
     }
 

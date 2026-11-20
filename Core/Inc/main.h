@@ -63,6 +63,10 @@ void Error_Handler(void);
 #define dir1_GPIO_Port GPIOA
 #define dir2_Pin GPIO_PIN_5
 #define dir2_GPIO_Port GPIOA
+#define gimbal_servo_pwm_Pin GPIO_PIN_6
+#define gimbal_servo_pwm_GPIO_Port GPIOA
+#define gripper_motor_pwm_Pin GPIO_PIN_7
+#define gripper_motor_pwm_GPIO_Port GPIOA
 #define DIR_Pin GPIO_PIN_12
 #define DIR_GPIO_Port GPIOB
 #define ENA_Pin GPIO_PIN_15
@@ -71,13 +75,16 @@ void Error_Handler(void);
 #define encoderA_GPIO_Port GPIOA
 #define encoderB_Pin GPIO_PIN_3
 #define encoderB_GPIO_Port GPIOB
-#define gimbal_servo_pwm_Pin GPIO_PIN_6
-#define gimbal_servo_pwm_GPIO_Port GPIOA
-#define gripper_motor_pwm_Pin GPIO_PIN_7
-#define gripper_motor_pwm_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
-
+#define SW1_Pin GPIO_PIN_8
+#define SW1_GPIO_Port GPIOB
+#define SW2_Pin GPIO_PIN_9
+#define SW2_GPIO_Port GPIOB
+#define SW3_Pin GPIO_PIN_14
+#define SW3_GPIO_Port GPIOB
+#define SW4_Pin GPIO_PIN_13
+#define SW4_GPIO_Port GPIOC
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

@@ -54,6 +54,10 @@ HAL_StatusTypeDef LiftStepper_SetSpeedRpm(float rpm);
 
 float LiftStepper_GetSpeedRpm(void);
 
+/* 请求中止当前/下一次动作；可在中断中调用，只置位。 */
+void LiftStepper_Abort(void);
+void LiftStepper_ClearAbort(void);
+
 /* 立即停止脉冲，保持当前使能状态；需要失能时调用 LiftStepper_Disable()。 */
 void LiftStepper_Stop(void);
 

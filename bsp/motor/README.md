@@ -4,7 +4,7 @@
 
 ## 自动搬运流程与标定
 
-`Core/Src/motor_control.c` 使用阻塞式顺序流程，`Core/Inc/motor_control.h` 集中配置参数。`main.c` 完成外设初始化后调用 `MotorControl_Init()`，成功后调用一次 `MotorControl_RunOnce()`，整个流程完成或出错才返回，随后进入空闲主循环。旧的 `MotorControl_Start()` / `MotorControl_Process()` 已移除。
+`Core/Src/motor_control.c` 使用阻塞式顺序流程，`Core/Inc/motor_control.h` 集中配置参数。`main.c` 完成外设初始化和 `MotorControl_Init()` 后进入按键等待：SW1(PB8)/SW2(PB9)/SW3(PB14)/SW4(PC13) 均为低电平按下、内部上拉、下降沿 EXTI，10 ms 去抖；`READY` 时任一按键启动一次 `MotorControl_RunOnce()`，`RUNNING` 期间任一按键通过 `MotorControl_RequestStop()` 请求中止。完成后保持 `DONE`，再次按键会先调用 `MotorControl_Rearm()` 再启动下一轮；中止后为 `STOPPED`，需复位才能再次启动。旧的 `MotorControl_Start()` / `MotorControl_Process()` 已移除。
 
 启动前人工将底盘对齐取物台、升降机构置于最高处；云台不再需要人工摆位。初始化及3秒启动等待期间不下发云台位置、不启动云台PWM。自动流程为：张开夹爪并等待稳定 → 云台回到0°起点并等待稳定 → 下降取货 → 夹紧 → 抬升 → 前进270 mm → 停车静置200 ms → 云台旋转180° → 下降放货 → 松爪 → 升到最高处 → 返回起点 → 云台回到0° → 完成。只使用置物台2，不循环执行；结束后云台回到0°起点。
 
@@ -29,18 +29,20 @@
 | 控制接口 | 行为 |
 | --- | --- |
 | `MotorControl_Init()` | 初始化不运动；不能用来解除故障或重新归零 |
-| `MotorControl_RunOnce()` | 仅在 `READY` 可调用；阻塞执行完整流程，成功返回 `HAL_OK`，失败返回 `HAL_ERROR`；不能重复执行 |
+| `MotorControl_RunOnce()` | 仅在 `READY` 可调用；由按键触发，阻塞执行完整流程，成功返回 `HAL_OK`，失败返回 `HAL_ERROR`；DONE 后需先 Rearm |
+| `MotorControl_Rearm()` | 仅在 `DONE` 后调用：确认无动作、清停止标志并回到 `READY`，供下一次 RunOnce |
+| `MotorControl_RequestStop()` | EXTI 中调用，置停止请求并中止步进脉冲；`RUNNING` 时有效，流程在当前动作返回后结束 |
 | `MotorControl_Stop()` | 主程序停机入口，停止底盘并锁定流程，不松爪、不关舵机PWM；运行中保持升降力矩，全部 DONE 后才失能；保留已有故障和完成状态 |
 | `MotorControl_GetState()` | 返回未初始化、待命、运行、完成、停止或故障六种状态，不再区分每个动作 |
 | `MotorControl_GetError()` | 返回无错误，或未标定、参数错误、驱动失败、行走超时四类错误 |
 
 错误码只保存在内存，供调试器或调用者查询，没有串口发送或显示输出。驱动失败统一为 `MOTOR_CONTROL_ERROR_DRIVER`；去程和回程超时统一为 `MOTOR_CONTROL_ERROR_TIMEOUT`，保留未标定和配置错误两类保护。
 
-所有控制接口只在主程序上下文调用，运行期间保持系统节拍和TIM4中断开启。夹爪、云台和启动等待使用 `HAL_Delay()`；升降沿用阻塞驱动；底盘等待循环每毫秒检查到位和15秒超时。主程序阻塞时，TIM4中断仍继续执行PID。
+所有控制接口只在主程序上下文调用，运行期间保持系统节拍和TIM4中断开启。启动、夹爪和云台旋转后的等待使用可中断的 1 ms 轮询；云台 `Home()` 内部的 1 s 等待不可中断；升降沿用阻塞驱动但支持中止请求；底盘等待循环每毫秒检查到位、停止请求和15秒超时。主程序阻塞时，TIM4中断仍继续执行PID。
 
-阻塞期间主循环不能检测按钮、接收命令或调用停止接口，因此 `MotorControl_Stop()` 不是异步急停，也不支持从中断调用它来中止流程。升降没有限位反馈，舵机通过等待时间推定到位，软件无法确认失步、夹持成功或旋转完成。行走超时或驱动调用失败时停止底盘并立即返回故障，不再下发任何后续动作；保持已有夹持和升降力矩。
+主循环阻塞期间 EXTI 仍能记录按键并请求停止，因此按键不是异步急停：停止在当前动作返回或被中止后生效，最多需等云台 `Home()` 的 1 s 等待结束。升降没有限位反馈，舵机通过等待时间推定到位，软件无法确认失步、夹持成功或旋转完成。行走超时或驱动调用失败时停止底盘并立即返回故障，不再下发任何后续动作；保持已有夹持和升降力矩。
 
-每次重跑必须复位并人工恢复起点、最高处和取物方向。先单轴标定，再空载检查流程和干涉，最后带载验收；软件模拟验证不替代实机验证。
+正常 `DONE` 后可按键重跑；若在中途 `STOPPED` 或 `FAULT`，必须复位并人工恢复起点、最高处和取物方向。先单轴标定，再空载检查流程和干涉，最后带载验收；软件模拟验证不替代实机验证。
 
 ### 云台人工初始位置接口
 
@@ -95,6 +97,8 @@ HAL_StatusTypeDef LiftStepper_Init(void);
 HAL_StatusTypeDef LiftStepper_Move(LiftStepperDirection direction, float angle_deg);
 HAL_StatusTypeDef LiftStepper_SetSpeedRpm(float rpm);
 float LiftStepper_GetSpeedRpm(void);
+void LiftStepper_Abort(void);
+void LiftStepper_ClearAbort(void);
 void LiftStepper_Stop(void);
 void LiftStepper_Disable(void);
 uint8_t LiftStepper_IsBusy(void);
@@ -124,6 +128,8 @@ mg513_position_t MG513_GetPosition(void);
 | `LiftStepper_Init()` | 在系统时钟和 TIM1 初始化后调用；停止脉冲、驱动器失能，不产生运动 |
 | `LiftStepper_Move(direction, angle_deg)` | 按方向相对转动指定角度，阻塞到全部脉冲发完；角度为有限的非负数，可超过360° |
 | `LiftStepper_SetSpeedRpm(rpm)` | 设置后续动作的默认转速，单位 rpm，范围见头文件；运动中调用只影响下一次 |
+| `LiftStepper_Abort()` | 请求中止当前/下一次动作；只置位，可在中断中调用 |
+| `LiftStepper_ClearAbort()` | 清除中止请求，`MotorControl_RunOnce()` 启动时调用 |
 | `LiftStepper_Stop()` | 立即停止脉冲，保持当前使能状态 |
 | `LiftStepper_Disable()` | 立即停止脉冲并失能驱动器；`MotorControl` 只在全部 DONE 后调用 |
 | `LiftStepper_IsBusy()` | 返回 1 表示正在发脉冲 |

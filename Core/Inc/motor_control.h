@@ -61,9 +61,14 @@ typedef enum {
 
 HAL_StatusTypeDef MotorControl_Init(void);
 /* 阻塞执行一次，完成或失败才返回。只允许主程序调用且保持中断开启。
- * 完成/停止/故障后不能重新运行，需复位并人工恢复初始位置。
+ * 成功后状态为 DONE；再次执行前需调用 MotorControl_Rearm()。
+ * 停止或故障后不能自动重新运行，需复位并人工恢复初始位置。
  */
 HAL_StatusTypeDef MotorControl_RunOnce(void);
+/* 仅在 DONE 后调用：确认无动作、清停止标志并回到 READY，供下一次 RunOnce。 */
+HAL_StatusTypeDef MotorControl_Rearm(void);
+/* 请求中止当前运行流程；只置位，可在 EXTI 中断中调用。 */
+void MotorControl_RequestStop(void);
 /* 主程序停机入口，不是异步急停：阻塞运行期间主循环不能调用本函数。
  * 不松爪、不关闭舵机 PWM；运行中保持升降力矩，全部 DONE 后才失能；不得在中断中调用。
  */
