@@ -66,8 +66,9 @@ typedef struct {
     int8_t last_dir;   /* 上次方向：-1 未知，0 反转，1 正转 */
 } mg513_t;
 
-/* 初始化并启动编码器、PWM、TIM4 10 ms 节拍；驱动保持失能，首次位置指令时才使能。
- * 硬件：TIM1_CH1/PA8 PWM，PA0 高电平使能，PA4/PA5 方向，TIM2 PA15/PB3 编码器。
+/* 初始化并启动编码器、TIM4 10 ms 节拍；驱动保持失能，首次位置指令时才使能和接管 TIM1。
+ * 硬件：TIM1_CH1/PA8 PWM（与步进 CH3 分时复用），PA0 高电平使能，PA4/PA5 方向，
+ * TIM2 PA15/PB3 编码器。
  */
 HAL_StatusTypeDef MG513_Init(void);
 

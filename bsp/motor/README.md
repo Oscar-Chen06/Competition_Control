@@ -6,18 +6,18 @@
 
 `Core/Src/motor_control.c` 使用阻塞式顺序流程，`Core/Inc/motor_control.h` 集中配置参数。`main.c` 完成外设初始化后调用 `MotorControl_Init()`，成功后调用一次 `MotorControl_RunOnce()`，整个流程完成或出错才返回，随后进入空闲主循环。旧的 `MotorControl_Start()` / `MotorControl_Process()` 已移除。
 
-启动前人工将底盘对齐取物台、升降机构置于最高处、云台摆在取物方向。初始化及3秒启动等待期间不下发云台位置、不启动云台PWM。自动流程为：张开夹爪 → 下降取货 → 夹紧 → 抬升 → 前进270 mm → 停车静置200 ms → 旋转180° → 下降放货 → 松爪 → 升到最高处 → 返回起点 → 静置200 ms后完成。只使用置物台2，不循环执行；结束后云台保持朝向台2。
+启动前人工将底盘对齐取物台、升降机构置于最高处；云台不再需要人工摆位。初始化及3秒启动等待期间不下发云台位置、不启动云台PWM。自动流程为：张开夹爪并等待稳定 → 云台回到0°起点并等待稳定 → 下降取货 → 夹紧 → 抬升 → 前进270 mm → 停车静置200 ms → 云台旋转180° → 下降放货 → 松爪 → 升到最高处 → 返回起点 → 云台回到0° → 完成。只使用置物台2，不循环执行；结束后云台回到0°起点。
 
-默认 `MOTOR_CONTROL_CALIBRATED=0`，程序保持 `MOTOR_CONTROL_FAULT`，错误为 `MOTOR_CONTROL_ERROR_NOT_CALIBRATED`，不会自动运动。必须完成以下标定后才可置为1并重新编译：
+当前工作区 `MOTOR_CONTROL_CALIBRATED=1`，程序会执行自动流程。若要先锁定不运动，把它改回 `0`，程序会保持 `MOTOR_CONTROL_FAULT`，错误为 `MOTOR_CONTROL_ERROR_NOT_CALIBRATED`。以下参数必须实机标定后再置为1并重新编译：
 
 | 配置宏（均在 motor_control.h） | 含义与填写规则 |
 | --- | --- |
-| `MOTOR_CONTROL_TRAVEL_SIGN` | 向置物区对应 MG513 正角度填 `1`，负角度填 `-1`；默认0无效 |
-| `MOTOR_CONTROL_LIFT_DOWN_FORWARD` | 步进正转下降填 `1`，反转下降填 `0`；默认-1无效 |
-| `MOTOR_CONTROL_PICKUP_DEPTH_MM` | 从最高处下降到实际夹持位置的距离 D；默认-1，待测量 |
-| `MOTOR_CONTROL_LIFT_TRAVEL_MM` | 实测可用升降行程；默认-1，不能直接填丝杆总长100 mm |
-| `MOTOR_CONTROL_GRIP_OPEN_DEG` | 实测张开角度0～180°；默认-1无效 |
-| `MOTOR_CONTROL_GRIP_CLOSED_DEG` | 实测夹紧角度0～180°，不能与张开角度相同；默认-1无效 |
+| `MOTOR_CONTROL_TRAVEL_SIGN` | 向置物区对应 MG513 正角度填 `1`，负角度填 `-1` |
+| `MOTOR_CONTROL_LIFT_DOWN_FORWARD` | 步进正转下降填 `1`，反转下降填 `0` |
+| `MOTOR_CONTROL_PICKUP_DEPTH_MM` | 从最高处下降到实际夹持位置的距离 D；当前示例50 mm |
+| `MOTOR_CONTROL_LIFT_TRAVEL_MM` | 实测可用升降行程；当前示例100 mm，不能直接当作丝杆总长 |
+| `MOTOR_CONTROL_GRIP_OPEN_DEG` | 实测张开角度0～180°；当前示例100° |
+| `MOTOR_CONTROL_GRIP_CLOSED_DEG` | 实测夹紧角度0～180°，不能与张开角度相同；当前示例0° |
 | `MOTOR_CONTROL_CARRY_LIFT_MM` | 取货后抬升量 H，默认10 mm，允许5～10 mm |
 
 仍需标定 `gimbal_servo.h` 的云台端点和方向、`mg513.h` 的编码器计数及方向，并实机整定PID。夹爪“180°运动47 mm”不足以推算张开及夹紧角度。未填写参数或范围无效时，配置错误会锁存，不执行后续动作。
@@ -30,13 +30,13 @@
 | --- | --- |
 | `MotorControl_Init()` | 初始化不运动；不能用来解除故障或重新归零 |
 | `MotorControl_RunOnce()` | 仅在 `READY` 可调用；阻塞执行完整流程，成功返回 `HAL_OK`，失败返回 `HAL_ERROR`；不能重复执行 |
-| `MotorControl_Stop()` | 主程序停机入口，停止底盘并锁定流程，不松爪、不撤销升降保持力矩、不关舵机PWM；保留已有故障和完成状态 |
+| `MotorControl_Stop()` | 主程序停机入口，停止底盘并锁定流程，不松爪、不关舵机PWM；运行中保持升降力矩，全部 DONE 后才失能；保留已有故障和完成状态 |
 | `MotorControl_GetState()` | 返回未初始化、待命、运行、完成、停止或故障六种状态，不再区分每个动作 |
 | `MotorControl_GetError()` | 返回无错误，或未标定、参数错误、驱动失败、行走超时四类错误 |
 
 错误码只保存在内存，供调试器或调用者查询，没有串口发送或显示输出。驱动失败统一为 `MOTOR_CONTROL_ERROR_DRIVER`；去程和回程超时统一为 `MOTOR_CONTROL_ERROR_TIMEOUT`，保留未标定和配置错误两类保护。
 
-所有控制接口只在主程序上下文调用，运行期间保持系统节拍和TIM2中断开启。夹爪、云台和启动等待使用 `HAL_Delay()`；升降沿用阻塞驱动；底盘等待循环每毫秒检查到位和15秒超时。主程序阻塞时，TIM2中断仍继续执行PID。
+所有控制接口只在主程序上下文调用，运行期间保持系统节拍和TIM4中断开启。夹爪、云台和启动等待使用 `HAL_Delay()`；升降沿用阻塞驱动；底盘等待循环每毫秒检查到位和15秒超时。主程序阻塞时，TIM4中断仍继续执行PID。
 
 阻塞期间主循环不能检测按钮、接收命令或调用停止接口，因此 `MotorControl_Stop()` 不是异步急停，也不支持从中断调用它来中止流程。升降没有限位反馈，舵机通过等待时间推定到位，软件无法确认失步、夹持成功或旋转完成。行走超时或驱动调用失败时停止底盘并立即返回故障，不再下发任何后续动作；保持已有夹持和升降力矩。
 
@@ -46,15 +46,15 @@
 
 新增 `HAL_StatusTypeDef GimbalServo_ConfirmHome(void)`：在 `GimbalServo_Init()` 后、PWM从未启动时调用，仅记录人工已摆到起点，不写比较寄存器、不启动PWM。它没有传感器，不是自动归零。`GimbalServo_RotateCW180()` 随后首次启动PWM并转到终点。PWM启动失败时保留原状态及比较值；成功启动后不能再用 `ConfirmHome()` 重写位置。原有 `Home()` 接口仍可驱动云台回到起点。
 
-GPIO初始化及CubeMX配置均将TB6600的低有效ENA设置为高电平禁用；升降动作完成后仍保持使能。Makefile已加入控制源文件，EIDE按现有Core目录扫描编译。
+GPIO初始化及CubeMX配置均将TB6600的低有效ENA设置为高电平禁用；升降动作完成后保持使能，全部流程 DONE 后才失能。Makefile已加入控制源文件，EIDE按现有Core目录扫描编译。
 
 ## 1. 接线与初始化条件
 
 | 电机 | 型号或规格 | 控制信号 | STM32 引脚 |
 | --- | --- | --- | --- |
-| 云台舵机 | MG996R，180°版本 | PWM，TIM3_CH1 | PA6 |
-| 夹爪舵机 | MG996R，180°版本 | PWM，TIM3_CH2 | PA7 |
-| 升降步进电机 | 原步距1.8°，TB6600设为4细分 | PUL，脉冲 | PA10 |
+| 云台舵机 | MG996R，180°版本 | PWM，TIM3_CH1（默认映射） | PA6 |
+| 夹爪舵机 | MG996R，180°版本 | PWM，TIM3_CH2（默认映射） | PA7 |
+| 升降步进电机 | 原步距1.8°，TB6600设为4细分 | PUL，TIM1_CH3 PWM | PA10 |
 | 升降步进电机 | TB6600 | DIR，方向 | PB12 |
 | 升降步进电机 | TB6600，低电平使能 | ENA，使能 | PB15 |
 | MG513 直流电机 | 带编码器减速电机 | PWM，TIM1_CH1 | PA8 |
@@ -64,9 +64,11 @@ GPIO初始化及CubeMX配置均将TB6600的低有效ENA设置为高电平禁用�
 
 两台舵机共用 TIM3。定时器时钟为72 MHz，预分频 `PSC=72-1`，周期 `ARR=19999`，两个通道均配置为 PWM1、高电平有效。此时 PWM 为50 Hz，每个计数对应1 μs。
 
-步进电机通过 GPIO 和 `HAL_Delay()` 产生脉冲，不使用 DWT，也不占用 TIM3。驱动器的细分开关需实际设为4细分。
+步进电机使用 TIM1_CH3/PA10 硬件 PWM 发脉冲，TIM1 时基 1 MHz（`PSC=71`），运行期修改 ARR 调频，CCR3 固定 50% 占空；TIM1 更新中断负责计步和梯形加减速。驱动器细分需与 `LIFT_STEPPER_MICROSTEP` 一致，当前为 4 细分（800 步/圈）。
 
 MG513 使用 TIM1_CH1 输出 10 kHz PWM（`PSC=0`、`ARR=7199`）；TIM4 产生 10 ms 控制中断（`PSC=72-1`、`ARR=10000-1`）；TIM2 以 TI12 四倍频读取 PA15/PB3 编码器，需要 TIM2 部分重映射 1，并关闭 JTAG（保留 SWD）释放 PA15/PB3。方向由 PA4/PA5 控制，PA0 为**高电平使能**。
+
+> 注意：MG513 的 PWM（PA8/TIM1_CH1）和步进的脉冲（PA10/TIM1_CH3）共用 TIM1，但 PSC/ARR 需求不同，**不能同时运行**。每次 MG513 或步进开始动作前都会重新配置 TIM1；切换由 `Tim1Mux_*` 统一处理（声明在 `bsp/motor/inc/tim1_mux.h`，实现在 `bsp/motor/src/lift_stepper_motor.c`）。
 
 工程需编译 `src` 中实际使用的 `.c` 文件（MG513 还需 `bsp/pid/pid.c`），并将对应 `inc` 目录加入头文件搜索路径。
 
@@ -91,6 +93,11 @@ HAL_StatusTypeDef GripperServo_SetAngle(uint16_t angle);
 /* 升降步进电机 */
 HAL_StatusTypeDef LiftStepper_Init(void);
 HAL_StatusTypeDef LiftStepper_Move(LiftStepperDirection direction, float angle_deg);
+HAL_StatusTypeDef LiftStepper_SetSpeedRpm(float rpm);
+float LiftStepper_GetSpeedRpm(void);
+void LiftStepper_Stop(void);
+void LiftStepper_Disable(void);
+uint8_t LiftStepper_IsBusy(void);
 
 /* MG513 直流减速电机 */
 typedef struct {
@@ -109,13 +116,17 @@ mg513_position_t MG513_GetPosition(void);
 | 接口 | 作用与参数 |
 | --- | --- |
 | `GimbalServo_Init()` | 在 `MX_TIM3_Init()` 后初始化驱动，不启动 PWM、不下发位置 |
-| `GimbalServo_Home()` | 下发云台起点位置，立即返回；调用方需等待舵机到位 |
+| `GimbalServo_Home()` | 下发云台起点位置并阻塞等待 `GIMBAL_SERVO_HOME_SETTLE_MS`；无位置反馈 |
 | `GimbalServo_ConfirmHome()` | 人工已摆在起点时仅记录状态，不输出PWM；只允许在PWM从未启动时调用 |
 | `GimbalServo_RotateCW180()` | 在回起点并等待后，或人工定位并调用ConfirmHome后，向顺时针终点转动；已在终点时重复调用返回错误，需先再次回起点 |
 | `GripperServo_Init()` | 在 `MX_TIM3_Init()` 后初始化驱动，不启动 PWM、不下发位置 |
 | `GripperServo_SetAngle(angle)` | 设置夹爪绝对目标角度，整数0～180°；下发后立即返回 |
-| `LiftStepper_Init()` | 在系统时钟和 GPIO 初始化后调用；脉冲拉低、驱动器禁用，不产生运动 |
+| `LiftStepper_Init()` | 在系统时钟和 TIM1 初始化后调用；停止脉冲、驱动器失能，不产生运动 |
 | `LiftStepper_Move(direction, angle_deg)` | 按方向相对转动指定角度，阻塞到全部脉冲发完；角度为有限的非负数，可超过360° |
+| `LiftStepper_SetSpeedRpm(rpm)` | 设置后续动作的默认转速，单位 rpm，范围见头文件；运动中调用只影响下一次 |
+| `LiftStepper_Stop()` | 立即停止脉冲，保持当前使能状态 |
+| `LiftStepper_Disable()` | 立即停止脉冲并失能驱动器；`MotorControl` 只在全部 DONE 后调用 |
+| `LiftStepper_IsBusy()` | 返回 1 表示正在发脉冲 |
 | `MG513_Init()` | 启动 TIM2 编码器、TIM1 PWM、TIM4 10 ms 节拍；驱动保持失能，等待位置指令 |
 | `MG513_MoveTo(rounds, deg)` | 位置模式，转到绝对目标角度（圈数×360°+deg）；自动使能，立即返回 |
 | `MG513_MoveRelative(rounds, deg)` | 位置模式，相对当前位置转动（圈数×360°+deg）；自动使能，立即返回 |
@@ -146,7 +157,7 @@ MG513 对外只保留以下 6 个接口：
 
 | 接口 | 说明 |
 | --- | --- |
-| `MG513_Init()` | 配置并启动 TIM2 编码器、TIM1 PWM、TIM4 10 ms 中断；驱动保持失能 |
+| `MG513_Init()` | 配置并启动 TIM2 编码器、TIM4 10 ms 中断；TIM1 PWM 在首次动作时接管，驱动保持失能 |
 | `MG513_MoveTo(rounds, deg)` | 绝对位置：目标 = rounds×360° + deg；自动使能，立即返回 |
 | `MG513_MoveRelative(rounds, deg)` | 相对位置：目标 = 当前角 + rounds×360° + deg；自动使能，立即返回 |
 | `MG513_Stop()` | 立即清 PWM 并失能，目标改为当前位置 |
@@ -160,20 +171,22 @@ MG513 对外只保留以下 6 个接口：
 | 时机 | PA0 使能 | TIM2 编码器 | TIM1 PWM | TIM4 10 ms |
 | --- | --- | --- | --- | --- |
 | `MX_GPIO_Init()` 后 | 低电平（失能） | 未启动 | 未启动 | 未启动 |
-| `MG513_Init()` 成功 | 低电平（失能） | 启动，持续计数 | 启动，CCR=0 | 启动，持续中断 |
-| `MG513_MoveTo()` / `MG513_MoveRelative()` | 高电平（使能） | 保持运行 | 保持运行 | 保持运行 |
-| 运动过程中 | 高电平（使能） | 保持运行 | 保持运行 | 保持运行 |
-| 到位自动判定 | 低电平（自动失能） | 保持运行 | 保持运行，CCR=0 | 保持运行 |
-| `MG513_Stop()` | 低电平（失能） | 保持运行 | 保持运行，CCR=0 | 保持运行 |
-| `MG513_Init()` 失败清理 | 低电平（失能） | 停止 | 停止 | 不启动 |
+| `MG513_Init()` 成功 | 低电平（失能） | 启动，持续计数 | 未启动 | 启动，持续中断 |
+| `MG513_MoveTo()` / `MG513_MoveRelative()` | 高电平（使能） | 保持运行 | 接管 TIM1，CH1 启动 | 保持运行 |
+| 运动过程中 | 高电平（使能） | 保持运行 | CH1 保持运行 | 保持运行 |
+| 到位自动判定 | 低电平（自动失能） | 保持运行 | CH1 保持运行，CCR=0 | 保持运行 |
+| `MG513_Stop()` | 低电平（失能） | 保持运行 | CH1 保持运行，CCR=0 | 保持运行 |
+| 步进开始动作 | 不参与 | 保持运行 | CH1 停止，切换 CH3 | 保持运行 |
+| `MG513_Init()` 失败清理 | 低电平（失能） | 停止 | 未启动 | 不启动 |
 
 定时器计数逻辑：
 
 - TIM2 编码器在 `MG513_Init()` 中启动后不再停止；`motor_update()` 每 10 ms 读取一次 16 位 CNT，用有符号差扩展成 32 位累计计数。
-- TIM1 PWM 在 `MG513_Init()` 中启动后持续输出；失能或空闲时只把 CCR 写 0，不调用 `HAL_TIM_PWM_Stop()`。
+- TIM1 由 MG513 和步进分时复用。MG513 在 `MoveTo/MoveRelative` 时通过 `Tim1Mux_TakeMg513()` 恢复 `PSC=0、ARR=7199` 并启动 CH1；步进在动作时通过 `Tim1Mux_TakeStepper()` 切到 `PSC=71`、动态 ARR 和 CH3。
+- TIM1 更新中断只在步进运行时开启，用于计步和加减速；MG513 运行时关闭。
 - TIM4 在 `MG513_Init()` 最后启动，10 ms 更新中断一直运行；`READY` 状态下中断只更新编码器和把 CCR 写 0，不跑 PID；只有 `RUNNING` 状态才执行串级 PID。
-- `MG513_Stop()` 只停止电机输出并使能脚失能，不会停止或暂停 TIM1/TIM2/TIM4。运行期没有对外提供定时器停止/暂停接口。
-- `MG513_Init()` 会把 TIM4 ARR 强制为 `9999`、TIM1 ARR 强制为 `7199`，防止 CubeMX 重新生成后节拍或 PWM 频率改变。
+- `MG513_Stop()` 只停止电机输出并使能脚失能，不停止 TIM2/TIM4；TIM1 由下一次 MG513 或步进动作重新接管。
+- `MG513_Init()` 会把 TIM4 ARR 强制为 `9999`；MG513 接管 TIM1 时再把 ARR 设为 `7199`。步进接管时按起始频率设置 ARR。
 
 ## 3. 可调参数
 
@@ -206,13 +219,23 @@ MG513 对外只保留以下 6 个接口：
 
 | 参数 | 默认值 | 用途 |
 | --- | --- | --- |
-| `LIFT_STEPPER_PULSES_PER_REV` | `800U` | 每圈脉冲数，必须与电机步距及驱动器实际细分一致 |
-| `LIFT_STEPPER_FORWARD_LEVEL` | `GPIO_PIN_SET` | 正转时 DIR 的电平；方向相反时改为 `GPIO_PIN_RESET` |
-| `LIFT_STEPPER_ENABLE_LEVEL` | `GPIO_PIN_RESET` | 当前 TB6600 的使能电平，保持低电平有效配置 |
-| `LIFT_STEPPER_PULSE_DELAY_MS` | `1U` | 高、低电平各自的延时时间，单位ms；增大可降低速度，使用正整数 |
-| `LIFT_STEPPER_ENABLE_DELAY_MS` | `10U` | 设置方向和使能后，到第一个脉冲前的等待时间，单位ms |
+| `LIFT_STEPPER_MOTOR_STEP_ANGLE_DEG` | `1.8f` | 电机整步步距角 |
+| `LIFT_STEPPER_MICROSTEP` | `4U` | 驱动器细分，需与 TB6600 拨码一致 |
+| `LIFT_STEPPER_STEPS_PER_REV` | `800` | 每圈脉冲数 = 360° ÷ 1.8° × 4 |
+| `LIFT_STEPPER_FORWARD_LEVEL` | `GPIO_PIN_SET` | 正转时 DIR 电平；方向相反时改为 `GPIO_PIN_RESET` |
+| `LIFT_STEPPER_ENABLE_LEVEL` | `GPIO_PIN_RESET` | 使能电平，当前 TB6600 低电平使能 |
+| `LIFT_STEPPER_DISABLE_LEVEL` | `GPIO_PIN_SET` | 失能电平，应与使能电平相反 |
+| `LIFT_STEPPER_ENABLE_DELAY_MS` | `10U` | 使能后到第一个脉冲的等待时间，单位 ms |
+| `LIFT_STEPPER_DEFAULT_SPEED_RPM` | `30.0f` | 默认转速，单位 rpm |
+| `LIFT_STEPPER_MIN_SPEED_RPM` | `1.0f` | 允许的最小转速 |
+| `LIFT_STEPPER_MAX_SPEED_RPM` | `120.0f` | 允许的最大转速 |
+| `LIFT_STEPPER_START_FREQ_HZ` | `400U` | 加减速起始频率 |
+| `LIFT_STEPPER_MAX_FREQ_HZ` | `20000U` | 脉冲频率上限，限制中断负载 |
+| `LIFT_STEPPER_ACCEL_HZ_S` | `20000U` | 梯形加减速斜率，单位 Hz/s |
+| `LIFT_STEPPER_TIMER_PSC` | `71U` | TIM1 步进模式预分频，72 MHz/(71+1) = 1 MHz |
+| `LIFT_STEPPER_TIMER_HZ` | `1000000UL` | TIM1 步进时基 |
 
-当前初始化时 ENA 固定拉高禁用，与已确认的低电平使能配套；若更换为相反极性的驱动器，不能只修改使能宏，还需同步调整初始化电平。
+方向或使能极性接反时，优先改 `LIFT_STEPPER_FORWARD_LEVEL` / `LIFT_STEPPER_ENABLE_LEVEL`，并保证 `LIFT_STEPPER_DISABLE_LEVEL` 与使能电平相反。当前初始化会主动输出失能电平，不会在上电时自动转动。
 
 角度与脉冲换算：
 
@@ -230,7 +253,9 @@ MG513 对外只保留以下 6 个接口：
 
 零脉冲动作不改变输出。角度换算后超出32位脉冲计数范围时返回错误。
 
-当前不进行加减速。默认每个脉冲高、低电平各调用一次 `HAL_Delay(1)`；理想2 ms周期对应500脉冲/秒、37.5转/分，但 HAL 的节拍取整和中断会使实际周期更长，不能将该值当作精确转速。
+步进脉冲由 TIM1_CH3 PWM 硬件产生，频率 `f = 1 MHz / (ARR + 1)`，CCR3 固定 50% 占空；TIM1 更新中断计步并执行梯形加减速。默认 30 rpm 对应 `30 ÷ 60 × 800 = 400 Hz`，50 mm（丝杆导程 8 mm）对应 5000 脉冲，约 12.5 秒。`LiftStepper_SetSpeedRpm()` 可在动作前修改默认转速。
+
+`LiftStepper_Move()` 内部会重新接管 TIM1：停止 MG513 的 CH1、设置 `PSC=71`、按起始频率写入 ARR/CCR3，再启动 CH3 和更新中断。动作完成后停止 CH3 和更新中断，驱动器保持使能以维持升降位置；全部流程 DONE 后由 `LiftStepper_Disable()` 失能。MG513 下次动作时会重新接管 TIM1 并恢复 CH1 的 10 kHz 配置。
 
 ### MG513 直流电机：`inc/mg513.h`
 
@@ -266,7 +291,7 @@ MG513 的使能完全由位置指令管理：`MG513_Init()` 后驱动保持失�
 | `PID_IN_KP/KI/KD` | `15.0/2.5/0.06` | 速度环参数，输入 °/s，输出 PWM 计数 |
 | `PID_IN_INT_BAND_DEG_S` | `180.0f` | 速度环积分分离带，单位 °/s |
 
-PID 参数只是可运行初值，必须按实机先整定内环（速度环）再整定外环（位置环）。`PID_CTRL_DT_S` 必须与 TIM2 中断周期一致，否则速度/积分换算会出错。
+PID 参数只是可运行初值，必须按实机先整定内环（速度环）再整定外环（位置环）。`PID_CTRL_DT_S` 必须与 TIM4 中断周期一致，否则速度/积分换算会出错。
 
 ## 4. 调用示例
 
@@ -279,20 +304,20 @@ if (LiftStepper_Init() != HAL_OK) { Error_Handler(); }
 if (MG513_Init() != HAL_OK) { Error_Handler(); }
 ```
 
-`MG513_Init()` 会自行启动编码器、PWM 和 TIM4 10 ms 中断，但驱动保持失能；首次调用 `MG513_MoveTo()` / `MG513_MoveRelative()` 时自动使能，到位后自动失能。
+`MG513_Init()` 会启动 TIM2 编码器和 TIM4 10 ms 中断，但驱动保持失能，TIM1 PWM 留到首次动作时接管；首次调用 `MG513_MoveTo()` / `MG513_MoveRelative()` 时自动使能，到位后自动失能。
 
 按业务需求调用动作，下面仅为示例，不需要放入无限循环中反复执行：
 
 ```c
-/* 云台：先回起点，等待后顺时针转180°。 */
+/* 云台：Home 内部已等待回位，再顺时针转180°。 */
 if (GimbalServo_Home() != HAL_OK) { Error_Handler(); }
-HAL_Delay(GIMBAL_SERVO_HOME_SETTLE_MS);
 if (GimbalServo_RotateCW180() != HAL_OK) { Error_Handler(); }
 
 /* 夹爪：目标角度仅作示例，实际开合角度待调试。 */
 if (GripperServo_SetAngle(90) != HAL_OK) { Error_Handler(); }
 
-/* 步进：正转180°，再反转90°；每次都等待脉冲发完再继续。 */
+/* 步进：设置 30 rpm，正转180°，再反转90°；每次都等待脉冲发完再继续。 */
+if (LiftStepper_SetSpeedRpm(30.0f) != HAL_OK) { Error_Handler(); }
 if (LiftStepper_Move(LIFT_STEPPER_FORWARD, 180.0f) != HAL_OK)
 {
     Error_Handler();
@@ -306,7 +331,7 @@ if (LiftStepper_Move(LIFT_STEPPER_REVERSE, 90.0f) != HAL_OK)
 if (MG513_MoveTo(2, 90.0f) != HAL_OK) { Error_Handler(); }
 while (MG513_MoveDone() == 0U)
 {
-    /* 等待到位；控制仍在 TIM2 中断中运行，主循环可做其他非阻塞任务。 */
+    /* 等待到位；控制仍在 TIM4 中断中运行，主循环可做其他非阻塞任务。 */
 }
 
 if (MG513_MoveRelative(0, 45.0f) != HAL_OK) { Error_Handler(); }
@@ -321,7 +346,7 @@ mg513_position_t pos = MG513_GetPosition();
 MG513_Stop();
 ```
 
-MG513 的位置接口只负责下发目标，立即返回，实际运动由 TIM2 中断中的串级 PID 完成；到位后自动清 PWM 并失能。`MG513_MoveDone()` 只是轮询判断，不会阻塞；示例中的空 `while` 仅用于演示等待，实际工程建议在主循环中非阻塞轮询。速度环仅在内部运行，不对外提供速度控制接口。
+MG513 的位置接口只负责下发目标，立即返回，实际运动由 TIM4 中断中的串级 PID 完成；到位后自动清 PWM 并失能。`MG513_MoveDone()` 只是轮询判断，不会阻塞；示例中的空 `while` 仅用于演示等待，实际工程建议在主循环中非阻塞轮询。速度环仅在内部运行，不对外提供速度控制接口。
 
 步进函数只在主循环等普通程序上下文调用，不在中断中调用。`HAL_Delay()` 依赖系统节拍，运行期间不要关闭或暂停节拍中断。阻塞运行期间主程序不能继续处理其他任务，已有的舵机硬件 PWM 仍会继续输出。
 

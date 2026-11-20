@@ -3,8 +3,10 @@
 #include <math.h>
 #include <stddef.h>
 
+#include "lift_stepper_motor.h"
 #include "pid.h"
 #include "tim.h"
+#include "tim1_mux.h"
 
 static mg513_t s_motor;
 static control_t s_ctrl;
@@ -218,6 +220,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     {
         mg513_tick();
     }
+    else if (htim->Instance == TIM1)
+    {
+        LiftStepper_OnPulse();
+    }
 }
 
 HAL_StatusTypeDef MG513_Init(void)
@@ -241,15 +247,9 @@ HAL_StatusTypeDef MG513_Init(void)
     control_init(&s_ctrl);
     motor_enable(&s_motor, 0U);
     __HAL_TIM_SET_AUTORELOAD(&htim4, MG513_CTRL_TIM_ARR);
-    __HAL_TIM_SET_AUTORELOAD(&htim1, MG513_PWM_ARR);
 
     if (HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL) != HAL_OK)
     {
-        return HAL_ERROR;
-    }
-    if (HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1) != HAL_OK)
-    {
-        (void)HAL_TIM_Encoder_Stop(&htim2, TIM_CHANNEL_ALL);
         return HAL_ERROR;
     }
 
@@ -259,7 +259,6 @@ HAL_StatusTypeDef MG513_Init(void)
     {
         state = UNINITIALIZED;
         motor_enable(&s_motor, 0U);
-        (void)HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
         (void)HAL_TIM_Encoder_Stop(&htim2, TIM_CHANNEL_ALL);
         return HAL_ERROR;
     }
@@ -269,7 +268,7 @@ HAL_StatusTypeDef MG513_Init(void)
 
 static HAL_StatusTypeDef mg513_start_position(float target_deg)
 {
-    if ((state == UNINITIALIZED) || !isfinite(target_deg))
+    if ((state == UNINITIALIZED) || !isfinite(target_deg) || (LiftStepper_IsBusy() != 0U))
     {
         return HAL_ERROR;
     }
@@ -281,6 +280,7 @@ static HAL_StatusTypeDef mg513_start_position(float target_deg)
     }
     control_set_mode(&s_ctrl, CTRL_MODE_POSITION);
     control_set_angle_deg(&s_ctrl, target_deg);
+    Tim1Mux_TakeMg513(MG513_PWM_TIM_PSC, MG513_PWM_ARR);
     motor_enable(&s_motor, 1U);
     state = RUNNING;
     mg513_exit_critical(primask);

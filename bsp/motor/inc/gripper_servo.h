@@ -13,7 +13,7 @@ extern "C" {
 #define GRIPPER_SERVO_MAX_ANGLE_DEG 180U
 #define GRIPPER_SERVO_DEFAULT_ANGLE_DEG 90U
 
-/* PA7 / TIM3_CH2：在 MX_TIM3_Init() 后调用，初始化不启动舵机。
+/* PA7 / TIM3_CH2（默认映射，无需重映射）：在 MX_TIM3_Init() 后调用，初始化不启动舵机。
  * TIM3 使用 72 MHz 时钟、PSC=71、ARR=19999，运行期间不要重置定时器。
  */
 HAL_StatusTypeDef GripperServo_Init(void);

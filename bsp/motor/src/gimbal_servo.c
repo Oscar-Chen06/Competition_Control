@@ -66,6 +66,7 @@ HAL_StatusTypeDef GimbalServo_Home(void)
     if (status == HAL_OK)
     {
         state = HOME;
+        HAL_Delay(GIMBAL_SERVO_HOME_SETTLE_MS);
     }
     return status;
 }

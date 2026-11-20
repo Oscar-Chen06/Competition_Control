@@ -96,7 +96,7 @@ static HAL_StatusTypeDef drive_to(float distance_mm)
         if ((uint32_t)(HAL_GetTick() - started_ms) >= MOTOR_CONTROL_DRIVE_TIMEOUT_MS)
             return fail(MOTOR_CONTROL_ERROR_TIMEOUT);
         if (MG513_MoveDone()) break;
-        HAL_Delay(1); /* 保持中断运行，TIM2 继续执行底盘 PID。 */
+        HAL_Delay(1); /* 保持中断运行，TIM4 继续执行底盘 PID。 */
     }
     MG513_Stop();
     HAL_Delay(MOTOR_CONTROL_DRIVE_SETTLE_MS);
@@ -111,13 +111,16 @@ HAL_StatusTypeDef MotorControl_RunOnce(void)
     state = MOTOR_CONTROL_RUNNING;
     HAL_Delay(MOTOR_CONTROL_START_DELAY_MS);
 
-    /* 取货：每个函数等待完成才返回；任何失败立即结束，不继续下一动作。 */
+    /* 初始状态：先确认夹爪张开，再把云台回到 0° 起点。 */
     if (grip(MOTOR_CONTROL_GRIP_OPEN_DEG) != HAL_OK) return HAL_ERROR;
+    if (GimbalServo_Home() != HAL_OK) return fail(MOTOR_CONTROL_ERROR_DRIVER);
+
+    /* 取货：每个函数等待完成才返回；任何失败立即结束，不继续下一动作。 */
     if (lift_to(MOTOR_CONTROL_PICKUP_DEPTH_MM) != HAL_OK) return HAL_ERROR;
     if (grip(MOTOR_CONTROL_GRIP_CLOSED_DEG) != HAL_OK) return HAL_ERROR;
     if (lift_to(MOTOR_CONTROL_PICKUP_DEPTH_MM - MOTOR_CONTROL_CARRY_LIFT_MM) != HAL_OK) return HAL_ERROR;
 
-    /* 运送到台2，停车后才旋转。初始化时不转动云台。 */
+    /* 运送到台2，停车后才旋转；启动时云台已确认在 0°。 */
     if (drive_to(MOTOR_CONTROL_STATION_DISTANCE_MM) != HAL_OK) return HAL_ERROR;
     if (GimbalServo_RotateCW180() != HAL_OK) return fail(MOTOR_CONTROL_ERROR_DRIVER);
     HAL_Delay(MOTOR_CONTROL_GIMBAL_SETTLE_MS);
@@ -128,6 +131,9 @@ HAL_StatusTypeDef MotorControl_RunOnce(void)
     if (lift_to(0.0f) != HAL_OK) return HAL_ERROR;
     if (drive_to(0.0f) != HAL_OK) return HAL_ERROR;
     if (GimbalServo_Home() != HAL_OK) return fail(MOTOR_CONTROL_ERROR_DRIVER);
+
+    /* 全部动作完成后才解除升降步进使能；运行中保持力矩。 */
+    LiftStepper_Disable();
     state = MOTOR_CONTROL_DONE;
     return HAL_OK;
 }

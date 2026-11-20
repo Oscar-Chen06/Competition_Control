@@ -8,25 +8,25 @@ extern "C" {
 #endif
 
 #ifndef MOTOR_CONTROL_CALIBRATED
-#define MOTOR_CONTROL_CALIBRATED 0U
+#define MOTOR_CONTROL_CALIBRATED 1U
 #endif
 #ifndef MOTOR_CONTROL_TRAVEL_SIGN
-#define MOTOR_CONTROL_TRAVEL_SIGN 0
+#define MOTOR_CONTROL_TRAVEL_SIGN 1
 #endif
 #ifndef MOTOR_CONTROL_LIFT_DOWN_FORWARD
-#define MOTOR_CONTROL_LIFT_DOWN_FORWARD (-1)
+#define MOTOR_CONTROL_LIFT_DOWN_FORWARD (0)
 #endif
 #ifndef MOTOR_CONTROL_PICKUP_DEPTH_MM
-#define MOTOR_CONTROL_PICKUP_DEPTH_MM (-1.0f)
+#define MOTOR_CONTROL_PICKUP_DEPTH_MM (50.0f)
 #endif
 #ifndef MOTOR_CONTROL_LIFT_TRAVEL_MM
-#define MOTOR_CONTROL_LIFT_TRAVEL_MM (-1.0f)
+#define MOTOR_CONTROL_LIFT_TRAVEL_MM (100.0f)
 #endif
 #ifndef MOTOR_CONTROL_GRIP_OPEN_DEG
-#define MOTOR_CONTROL_GRIP_OPEN_DEG (-1)
+#define MOTOR_CONTROL_GRIP_OPEN_DEG (100.0f)
 #endif
 #ifndef MOTOR_CONTROL_GRIP_CLOSED_DEG
-#define MOTOR_CONTROL_GRIP_CLOSED_DEG (-1)
+#define MOTOR_CONTROL_GRIP_CLOSED_DEG (0.0f)
 #endif
 #ifndef MOTOR_CONTROL_CARRY_LIFT_MM
 #define MOTOR_CONTROL_CARRY_LIFT_MM 10.0f
@@ -65,7 +65,7 @@ HAL_StatusTypeDef MotorControl_Init(void);
  */
 HAL_StatusTypeDef MotorControl_RunOnce(void);
 /* 主程序停机入口，不是异步急停：阻塞运行期间主循环不能调用本函数。
- * 不松爪、不关闭舵机 PWM、不撤销升降保持力矩；不得在中断中调用。
+ * 不松爪、不关闭舵机 PWM；运行中保持升降力矩，全部 DONE 后才失能；不得在中断中调用。
  */
 void MotorControl_Stop(void);
 MotorControlState MotorControl_GetState(void);
