@@ -127,6 +127,7 @@ HAL_StatusTypeDef MotorControl_RunOnce(void)
     if (grip(MOTOR_CONTROL_GRIP_OPEN_DEG) != HAL_OK) return HAL_ERROR;
     if (lift_to(0.0f) != HAL_OK) return HAL_ERROR;
     if (drive_to(0.0f) != HAL_OK) return HAL_ERROR;
+    if (GimbalServo_Home() != HAL_OK) return fail(MOTOR_CONTROL_ERROR_DRIVER);
     state = MOTOR_CONTROL_DONE;
     return HAL_OK;
 }
